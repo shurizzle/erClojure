@@ -18,14 +18,6 @@ is_digit($8) -> true;
 is_digit($9) -> true;
 is_digit(_) -> false.
 
-is_alpha(C) when C >= $a, C =< $z; C >= $A, C =< $Z -> true;
-is_alpha(_) -> false.
-
-is_alphanum(X) -> is_digit(X) or is_alpha(X).
-
-is_hex(C) when C >= $a, C =< $z; C >= $A, C =< $Z -> true;
-is_hex(C) -> is_digit(C).
-
 read_string_dispatch_unicode(T) ->
   read_string_dispatch_unicode(T, "").
 
@@ -58,9 +50,7 @@ read_string_dispatch([$v|T]) ->
 read_string_dispatch([H|T]) ->
   {H, T}.
 
-read_string(X) ->
-  read_string(X, "").
-
+read_string(X) -> read_string(X, "").
 read_string([], R) -> {R, ""};
 read_string([$"| T], R) -> {R, T};
 read_string([$\\| T], R) ->
@@ -75,10 +65,8 @@ base_convert(Base, [$-|Num]) when is_list(Base) ->
   -base_convert(Base, Num);
 base_convert(Base, Num) when is_list(Base) ->
   Format = "~" ++ Base ++ "u",
-  case io_lib:fread(Format, Num) of
-    {ok, [Res], []} -> Res;
-    {more, Format, Res, []} -> Res
-  end.
+  {ok, [Res], []} = io_lib:fread(Format, Num),
+  Res.
 
 read_4hex(T) -> read_4hex(T, "").
 read_4hex(T, R) when length(R) =:= 4 ->

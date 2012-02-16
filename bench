@@ -1,0 +1,5 @@
+#!/usr/bin/env escript
+
+main(_) ->
+  {MicroSeconds, _} = timer:tc(fun() -> [clojure:parse("[1 2 3 true false nil {:a 21.3 :b 43.2} \"Hello\"]") || _ <- lists:seq(1, 10000)], ok end),
+  io:format("Execution time: ~fs~n", [MicroSeconds * (math:pow(10, -6))]).

@@ -51,9 +51,8 @@ read_string_dispatch([H|T]) ->
   {H, T}.
 
 read_string(X) -> read_string(X, "").
-read_string([], R) -> {R, ""};
-read_string([$"| T], R) -> {R, T};
-read_string([$\\| T], R) ->
+read_string([$"|T], R) -> {R, T};
+read_string([$\\|T], R) ->
   {H, NT} = read_string_dispatch(T),
   read_string(NT, R ++ [H]);
 read_string([H|T], R) ->
@@ -77,7 +76,7 @@ read_4hex([H|T], R) when H >= $0, H =< $9; H >= $A, H =< $F; H >= $a, H =< $f ->
 read_octal(T) -> read_octal(T, "").
 read_octal([H|T], R) when H >= $0, H < $8 ->
   read_octal(T, R ++ [H]);
-read_octal(T, R) ->
+read_octal(T, R) when length(R) > 0 ->
   {base_convert(8, R), T}.
 
 parse_baseint(T) ->
@@ -112,41 +111,45 @@ parse_mantissa([H|T], R) when H >= $0, H =< $9 ->
 parse_mantissa(T, R) ->
   {base_convert(10, R), T}.
 
-parse_num(T, [$+]) ->
-  parse_num(T, []);
-parse_num([$0, $X|T], [$-]) ->
-  parse_num([$x|T], [$-]);
-parse_num([$0, $X|T], []) ->
-  parse_num([$x|T], []);
+parse_num(T, [$+]) -> parse_num(T, []);
+
+
+parse_num([$0, $X|T], [$-]) -> parse_num([$x|T], [$-]);
+parse_num([$0, $X|T], []) -> parse_num([$x|T], []);
 parse_num([$x|T], R) ->
   {N, NT} = read_4hex(T),
   case R of
     []    -> {N, NT};
     [$-]  -> {-N, NT}
   end;
+
+
 parse_num([$0|T], "-") ->
   {N, NT} = read_octal(T),
   {-N, NT};
 parse_num(T, "0") ->
   read_octal(T);
-parse_num([$R|T], R) ->
-  parse_num([$r|T], R);
+
+
+parse_num([$R|T], R) -> parse_num([$r|T], R);
 parse_num([$r|T], R) ->
   {I, NT} = parse_baseint(T),
   case R of
     [$-|NR] -> {-base_convert(base_convert(10, NR), I), NT};
     _       -> {base_convert(base_convert(10, R), I), NT}
   end;
-parse_num([$n|T], R) ->
-  {base_convert(10, R), T};
-parse_num([$N|T], R) ->
-  {base_convert(10, R), T};
+
+
+parse_num([$n|T], R) -> {base_convert(10, R), T};
+parse_num([$N|T], R) -> {base_convert(10, R), T};
+
+
+parse_num([$E|T], R) ->
+  parse_num([$e|T], R);
 parse_num([$e|T], R) ->
   {M, NT} = parse_mantissa(T),
   {base_convert(10, R) * M, NT};
-parse_num([$E|T], R) ->
-  {M, NT} = parse_mantissa(T),
-  {base_convert(10, R) * M, NT};
+
 parse_num([$.|T], R) ->
   {D, NT} = parse_int(T),
   {ok, [Float], []} = io_lib:fread("~f", R ++ [$.|D]),
@@ -155,12 +158,16 @@ parse_num([$.|T], R) ->
     [$M|Trail] -> {Float, Trail};
     _ -> {Float, NT}
   end;
+
+
 parse_num([$/, $-|T], R) ->
   {DS, NT} = parse_int(T),
   {{ratio, base_convert(10, R), -base_convert(10, DS)}, NT};
 parse_num([$/|T], R) ->
   {DS, NT} = parse_int(T),
   {{ratio, base_convert(10, R), base_convert(10, DS)}, NT};
+
+
 parse_num([], R) ->
   {base_convert(10, R), []};
 parse_num([H|T], R) when H >= $0, H =< $9 ->
@@ -168,17 +175,13 @@ parse_num([H|T], R) when H >= $0, H =< $9 ->
 parse_num(T, R) ->
   {base_convert(10, R), T}.
 
-parse_keyword(T) ->
-  parse_keyword(T, []).
-
+parse_keyword(T) -> parse_keyword(T, []).
 parse_keyword([H|T], R) when H =:= $\ ; H =:= $,; H =:= $"; H =:= ${; H =:= $}; H =:= $(;
     H =:= $); H =:= $[; H =:= $]; H =:= $#; H =:= $'; H =:= $'; H =:= $^; H =:= $@; H =:= $`;
     H =:= $~; H =:= $\\; H =:= $;; H =:= $\n; H =:= $\r; H =:= $\t ->
   {list_to_atom(R), [H|T]};
-parse_keyword([], R) ->
-  {list_to_atom(R), []};
-parse_keyword([H|T], R) ->
-  parse_keyword(T, R ++ [H]).
+parse_keyword([], R) ->  {list_to_atom(R), []};
+parse_keyword([H|T], R) ->  parse_keyword(T, R ++ [H]).
 
 parse_char([$u|T]) ->
   try
@@ -186,6 +189,13 @@ parse_char([$u|T]) ->
     {[H], NT}
   catch
     _:_ -> {"u", T}
+  end;
+parse_char([$o|T]) ->
+  try
+    {H, NT} = read_octal(T),
+    {[H], NT}
+  catch
+    _:_ -> {"o", T}
   end;
 parse_char([H|T]) ->
   {[H], T}.
@@ -202,20 +212,19 @@ parse_rfc3339(T) ->
           "-" -> (((ZHours * 60) + ZMins) * 60)
         end)).
 
+
 skip_spaces([H|T]) when H =:= $\ ; H =:= $,; H =:= $\r; H =:= $\n; H =:= $\t ->
   skip_spaces(T);
 skip_spaces(T) -> T.
 
-read_until(T, E) ->
-  read_until(T, E, "").
-read_until([H|T], H, R) ->
-  {R, T};
-read_until([H|T], E, R) ->
-  read_until(T, E, R ++ [H]).
+
+read_until(T, E) -> read_until(T, E, "").
+read_until([H|T], H, R) -> {R, T};
+read_until([H|T], E, R) -> read_until(T, E, R ++ [H]).
+
 
 parse_delim(Text, Delim) -> parse_delim(Text, Delim, []).
-parse_delim([D|T], D, V) ->
-  {V, T};
+parse_delim([D|T], D, V) -> {V, T};
 parse_delim(T, D, V) ->
   try
     {E, NT} = decode(T),
@@ -226,30 +235,35 @@ parse_delim(T, D, V) ->
       {V, NNT}
   end.
 
+
 array_to_hash(V) -> array_to_hash(V, []).
 array_to_hash([K, V|R], H) ->
   array_to_hash(R, H ++ [{K, V}]);
 array_to_hash([], H) ->
-  H.
+  dict:from_list(H).
+
 
 read_re(T) -> read_re(T, []).
 read_re([$"|T], Re) ->
   {ok, MP} = re:compile(Re, [unicode, extended]),
   {MP, T};
-read_re([$\\, $"|T], Re) ->
-  read_re(T, Re ++ [$"]);
-read_re([H|T], Re) ->
-  read_re(T, Re ++ [H]).
+read_re([$\\, $"|T], Re) -> read_re(T, Re ++ [$"]);
+read_re([H|T], Re) -> read_re(T, Re ++ [H]).
+
 
 dispatch([$i, $n, $s, $t|T]) ->
   [$"|NT] = skip_spaces(T),
   {H, NNT} = read_until(NT, $"),
   {parse_rfc3339(H), NNT};
+
 dispatch([${|T]) ->
   {Set, NT} = parse_delim(T, $}),
   {sets:from_list(Set), NT};
+
 dispatch([$"|T]) ->
   read_re(T).
+
+
 
 decode([$\ |T]) ->
   decode(T);
@@ -262,7 +276,8 @@ decode([$\n|T]) ->
 decode([$\t|T]) ->
   decode(T);
 decode([$"|T]) ->
-  read_string(T);
+  {S, NT} = read_string(T),
+  {term_to_binary(S), NT};
 decode([$t, $r, $u, $e|T]) ->
   {true, T};
 decode([$f, $a, $l, $s, $e|T]) ->
@@ -280,7 +295,8 @@ decode([$\\|T]) ->
 decode([$[|T]) ->
   parse_delim(T, $]);
 decode([$(|T]) ->
-  parse_delim(T, $));
+  {V, NT} = parse_delim(T, $)),
+  {list_to_tuple(V), NT};
 decode([${|T]) ->
   {V, NT} = parse_delim(T, $}),
   {array_to_hash(V), NT};
@@ -291,3 +307,4 @@ parse(T) ->
   {Res, Rest} = decode(T),
   [] = skip_spaces(Rest),
   Res.
+
